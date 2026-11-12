@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0a0a">
+<title>IronMind</title>
+<style>
+body{margin:0;background:#0a0a0a}
+.im-draw{stroke-dasharray:1;stroke-dashoffset:1;animation:imdraw 2.2s ease forwards}
+.im-load{width:0;animation:imload 3.3s ease-in-out forwards}
+@keyframes imdraw{to{stroke-dashoffset:0}}
+@keyframes imload{to{width:100%}}
+.sp{position:absolute;inset:0;pointer-events:none}
+.sp i{position:absolute;bottom:14%;border-radius:50%;background:#5fe0b0;box-shadow:0 0 8px 2px #2fae82aa;opacity:0;animation:spk 5s ease-in infinite}
+@keyframes spk{0%{opacity:0;transform:translateY(0)}20%{opacity:.9}100%{opacity:0;transform:translateY(-190px)}}
+.pulse{animation:pl 4s ease-in-out infinite}
+@keyframes pl{50%{filter:drop-shadow(0 0 22px #2fae82aa)}}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #b4596a;outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.im-draw,.im-load{animation-duration:.01s}.sp,.pulse{animation:none;display:none}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useEffect,useMemo,useRef}=React;
+const KEY="ironmind_v1",DAY=864e5,VERSION="0.1.0",CREATED="12/11/2026";
+const C={bg:"#0a0a0a",panel:"#141012",line:"#2a1a1e",wine:"#8a2f3d",wineDim:"#4a1a22",wineSoft:"#b4596a",text:"#e8e2e3",mute:"#8d8183",emerald:"#2fae82"};
+const CHANGES=[["0.1.0","12/11/2026","Primeira versão: anel de progresso, Modo Superação, metas, histórico, recorde, marcos, momentos críticos, diário editável, mensagens editáveis e backup."]];
+const DEF=[
+["You have power over your mind, not outside events. Realize this, and you will find strength.","Marcus Aurelius","Be strong and of a good courage; be not afraid.","Joshua 1:9"],
+["No man is free who is not master of himself.","Epictetus","He that ruleth his spirit is better than he that taketh a city.","Proverbs 16:32"],
+["We suffer more often in imagination than in reality.","Seneca","God hath not given us the spirit of fear; but of power, and of love, and of a sound mind.","2 Timothy 1:7"],
+["What stands in the way becomes the way.","Marcus Aurelius","I can do all things through Christ which strengtheneth me.","Philippians 4:13"],
+["Difficulties strengthen the mind, as labor does the body.","Seneca","They that wait upon the LORD shall renew their strength.","Isaiah 40:31"],
+["First say to yourself what you would be; then do what you have to do.","Epictetus","Keep thy heart with all diligence; for out of it are the issues of life.","Proverbs 4:23"],
+["Waste no more time arguing what a good man should be. Be one.","Marcus Aurelius","Watch and pray, that ye enter not into temptation.","Matthew 26:41"],
+["He who is brave is free.","Seneca","Stand fast therefore in the liberty wherewith Christ hath made us free.","Galatians 5:1"],
+["The soul becomes dyed with the color of its thoughts.","Marcus Aurelius","Be ye transformed by the renewing of your mind.","Romans 12:2"],
+["It is not what happens to you, but how you react to it that matters.","Epictetus","Let us not be weary in well doing: for in due season we shall reap, if we faint not.","Galatians 6:9"],
+["Man conquers the world by conquering himself.","Zeno of Citium","He that hath no rule over his own spirit is like a city that is broken down, and without walls.","Proverbs 25:28"],
+["If it is not right, do not do it; if it is not true, do not say it.","Marcus Aurelius","Create in me a clean heart, O God; and renew a right spirit within me.","Psalm 51:10"],
+["Begin at once to live, and count each separate day as a separate life.","Seneca","This is the day which the LORD hath made; we will rejoice and be glad in it.","Psalm 118:24"],
+["You could leave life right now. Let that determine what you do and say and think.","Marcus Aurelius","So teach us to number our days, that we may apply our hearts unto wisdom.","Psalm 90:12"],
+["Wealth consists not in having great possessions, but in having few wants.","Epictetus","Godliness with contentment is great gain.","1 Timothy 6:6"],
+["It is quality rather than quantity that matters.","Seneca","Be not overcome of evil, but overcome evil with good.","Romans 12:21"],
+["Every new beginning comes from some other beginning's end.","Seneca","Behold, I make all things new.","Revelation 21:5"],
+["He who fears death will never do anything worthy of a living man.","Seneca","The LORD is my light and my salvation; whom shall I fear?","Psalm 27:1"],
+["Don't explain your philosophy. Embody it.","Epictetus","Be ye doers of the word, and not hearers only.","James 1:22"],
+["Very little is needed to make a happy life; it is all within yourself, in your way of thinking.","Marcus Aurelius","As he thinketh in his heart, so is he.","Proverbs 23:7"]];
+const uid=()=>Math.random().toString(36).slice(2,10);
+const mkMsgs=()=>DEF.map(([q,a,v,r],i)=>({id:"d"+i,q,a,v,r}));
+const fmt=t=>new Date(t).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"});
+const dbt=(a,b)=>Math.max(0,Math.floor((b-a)/DAY));
+const dtl=t=>new Date(t-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16);
+const initial=()=>({goals:[{id:"g7",name:"Primeira semana",days:7},{id:"g30",name:"",days:30},{id:"g90",name:"Reset completo",days:90}],activeGoalId:"g30",cycles:[{id:uid(),start:Date.now(),end:null}],notes:[],urges:[],msgs:mkMsgs()});
+const load=()=>{try{const r=localStorage.getItem(KEY);if(r){const d=JSON.parse(r);if(Array.isArray(d.goals)&&Array.isArray(d.cycles)&&d.cycles.length)return{notes:[],urges:[],msgs:mkMsgs(),...d}}}catch(e){}return initial()};
+
+function Helmet({size=120,draw=false,color=C.wine,width=2.5}){
+const p={fill:"none",stroke:color,strokeWidth:width,strokeLinecap:"round",strokeLinejoin:"round",pathLength:1,className:draw?"im-draw":undefined};
+return(<svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
+<path {...p} d="M28 30 Q50 2 72 30"/><path {...p} d="M50 8 V25"/><path {...p} d="M22 56 Q22 25 50 25 Q78 25 78 56"/>
+<path {...p} d="M22 56 V78 Q22 90 33 90 H41 V72"/><path {...p} d="M78 56 V78 Q78 90 67 90 H59 V72"/>
+<path {...p} d="M50 44 V80"/><path {...p} d="M30 56 H44 M56 56 H70"/></svg>)}
+
+function Splash(){return(<div style={{...S.full,flexDirection:"column",gap:22}}><Helmet size={150} draw/>
+<h1 style={{margin:0,fontSize:44,letterSpacing:6,fontWeight:300,color:C.text,fontFamily:S.font}}>NoFap</h1>
+<div style={{width:200,height:4,background:C.line,borderRadius:4,overflow:"hidden"}}><div className="im-load" style={{height:"100%",background:C.wine,borderRadius:4}}/></div></div>)}
+
+function Sparks(){return(<div className="sp">{Array.from({length:14},(_,i)=><i key={i} style={{left:(8+(i*37)%84)+"%",animationDelay:((i*.45)%5)+"s",animationDuration:(4+i%4)+"s",width:3+(i%3)*2,height:3+(i%3)*2}}/>)}</div>)}
+
+function Ring({days,goal}){
+const R=118,circ=2*Math.PI*R,pct=goal?Math.min(days/goal.days,1):0,over=goal&&days>=goal.days,color=over?C.emerald:C.wine;
+return(<div style={{textAlign:"center"}}><div style={{position:"relative",width:280,height:280,margin:"0 auto"}}>
+<svg width="280" height="280" className={over?"pulse":""} style={{transform:"rotate(-90deg)",filter:over?`drop-shadow(0 0 12px ${C.emerald}88)`:"none"}}>
+<circle cx="140" cy="140" r={R} fill="none" stroke={C.line} strokeWidth="14"/>
+<circle cx="140" cy="140" r={R} fill="none" stroke={color} strokeWidth="14" strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={circ*(1-pct)} style={{transition:"stroke-dashoffset 1s, stroke .8s"}}/></svg>
+{over&&<Sparks/>}
+<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+<div style={{fontSize:76,fontWeight:200,lineHeight:1,color:C.text}}>{days}</div>
+<div style={{color:C.mute,fontSize:14,marginTop:6}}>{days===1?"dia limpo":"dias limpos"}</div></div></div>
+<div style={{marginTop:14,fontSize:22,color}}>{Math.floor(pct*100)}%</div>
+<div style={{color:C.mute,fontSize:14,marginTop:4}}>{goal?(goal.name?`${goal.name} · ${goal.days} dias`:`Meta de ${goal.days} dias`):"Crie uma meta no menu"}</div>
+{over&&<div style={{marginTop:10,color:C.emerald,fontSize:18}}>+{days-goal.days} dias além da meta</div>}</div>)}
+
+function App(){
+const [splash,setSplash]=useState(true),[data,setData]=useState(load),[now,setNow]=useState(Date.now());
+const [menu,setMenu]=useState(false),[tab,setTab]=useState("goals"),[gf,setGf]=useState({id:null,name:"",days:""});
+const [note,setNote]=useState(""),[en,setEn]=useState(null),[urgeOpen,setUrgeOpen]=useState(false),[urgeText,setUrgeText]=useState("");
+const [toast,setToast]=useState(""),[sd,setSd]=useState(null),[mf,setMf]=useState({id:null,q:"",a:"",v:"",r:""}),[more,setMore]=useState(false);
+const fileRef=useRef(null);
+useEffect(()=>{const t=setTimeout(()=>setSplash(false),3500);return()=>clearTimeout(t)},[]);
+useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(t)},[]);
+useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){}},[data]);
+useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(""),2500);return()=>clearTimeout(t)},[toast]);
+
+const cur=data.cycles.find(c=>c.end==null)||data.cycles[data.cycles.length-1];
+const days=dbt(cur.start,cur.end??now);
+const goal=data.goals.find(g=>g.id===data.activeGoalId)||data.goals[0]||null;
+const total=useMemo(()=>data.cycles.reduce((s,c)=>s+dbt(c.start,c.end??now),0),[data.cycles,now]);
+const best=useMemo(()=>Math.max(0,...data.cycles.map(c=>dbt(c.start,c.end??now))),[data.cycles,now]);
+const list=data.msgs.length?data.msgs:mkMsgs();
+const msg=list[Math.floor(now/DAY)%list.length];
+const upd=p=>setData(d=>({...d,...p}));
+
+const saveGoal=()=>{const n=parseInt(gf.days,10);if(!n||n<1)return;const g={id:gf.id||uid(),name:gf.name.trim(),days:n};
+upd({goals:gf.id?data.goals.map(x=>x.id===gf.id?g:x):[...data.goals,g],activeGoalId:data.activeGoalId||g.id});setGf({id:null,name:"",days:""})};
+const delGoal=id=>{if(!confirm("Excluir esta meta?"))return;const goals=data.goals.filter(g=>g.id!==id);upd({goals,activeGoalId:data.activeGoalId===id?goals[0]?.id||null:data.activeGoalId})};
+const restart=()=>{if(!confirm("Reiniciar o ciclo atual? O histórico será mantido."))return;const t=Date.now();
+upd({cycles:[...data.cycles.map(c=>c.end==null?{...c,end:t}:c),{id:uid(),start:t,end:null}]});setMenu(false)};
+const addNote=()=>{if(!note.trim())return;upd({notes:[{id:uid(),at:Date.now(),text:note.trim()},...data.notes]});setNote("")};
+const saveEdit=()=>{if(!en.text.trim())return;upd({notes:data.notes.map(n=>n.id===en.id?{...n,text:en.text.trim(),edited:Date.now()}:n)});setEn(null)};
+const addUrge=()=>{upd({urges:[{id:uid(),at:Date.now(),text:urgeText.trim()},...data.urges]});setUrgeText("");setUrgeOpen(false);setToast("Você resistiu. Isso é força.")};
+const saveStart=()=>{const ts=new Date(sd).getTime();if(!ts||ts>Date.now())return alert("Escolha uma data que não seja no futuro.");
+const prev=Math.max(0,...data.cycles.filter(c=>c.end!=null).map(c=>c.end));if(ts<prev)return alert("A data não pode ser anterior ao fim do ciclo anterior.");
+upd({cycles:data.cycles.map(c=>c.id===cur.id?{...c,start:ts}:c)});setSd(null)};
+const saveMsg=()=>{if(!mf.q.trim()&&!mf.v.trim())return;const m={id:mf.id||uid(),q:mf.q.trim(),a:mf.a.trim(),v:mf.v.trim(),r:mf.r.trim()};
+upd({msgs:mf.id?data.msgs.map(x=>x.id===mf.id?m:x):[...data.msgs,m]});setMf({id:null,q:"",a:"",v:"",r:""})};
+const exportData=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));const a=document.createElement("a");
+a.href=url;a.download=`ironmind-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url)};
+const importData=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);
+if(!Array.isArray(d.goals)||!Array.isArray(d.cycles)||!d.cycles.length)throw 0;setData({notes:[],urges:[],msgs:mkMsgs(),activeGoalId:d.goals[0]?.id||null,...d});alert("Dados importados com sucesso.")}
+catch(err){alert("Arquivo inválido. Use um backup .json do IronMind.")}};r.readAsText(f);e.target.value=""};
+
+if(splash)return <Splash/>;
+const tabs=[["goals","Metas"],["history","Histórico"],["msgs","Mensagens"],["backup","Backup"]];
+const sdv=sd??dtl(cur.start);
+
+return(<div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:S.font}}>
+<header style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px"}}>
+<div style={{display:"flex",alignItems:"center",gap:10}}><Helmet size={30} width={4}/><span style={{letterSpacing:3,fontSize:18}}>IronMind</span></div>
+<button aria-label="Abrir menu" onClick={()=>setMenu(true)} style={{...S.ghost,fontSize:26,padding:"0 10px"}}>⋮</button></header>
+
+<main style={{maxWidth:460,margin:"0 auto",padding:"10px 20px 50px"}}>
+<Ring days={days} goal={goal}/>
+<section style={{...S.card,marginTop:36}}>
+{msg.q&&<><p style={{margin:0,fontSize:18,lineHeight:1.55,fontStyle:"italic"}}>“{msg.q}”</p><p style={{margin:"6px 0 18px",color:C.mute,fontSize:14}}>{msg.a}</p></>}
+{msg.v&&<div style={{borderTop:msg.q?`1px solid ${C.line}`:"none",paddingTop:msg.q?16:0}}><p style={{margin:0,lineHeight:1.55}}>{msg.v}</p><p style={{margin:"6px 0 0",color:C.wineSoft,fontSize:14}}>{msg.r}</p></div>}</section>
+<div style={{textAlign:"center",marginTop:26}}><button onClick={()=>setUrgeOpen(true)} style={{...S.btn,borderRadius:22,padding:"9px 22px",color:C.wineSoft}}>Resisti</button></div>
+</main>
+
+{toast&&<div style={{position:"fixed",bottom:26,left:"50%",transform:"translateX(-50%)",background:C.wineDim,border:`1px solid ${C.wine}`,borderRadius:20,padding:"10px 18px",zIndex:30,fontSize:14}}>{toast}</div>}
+
+{urgeOpen&&<div onClick={()=>setUrgeOpen(false)} style={{position:"fixed",inset:0,background:"#000c",zIndex:20,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+<div onClick={e=>e.stopPropagation()} style={{...S.card,background:C.panel,width:"min(400px,100%)"}}>
+<h3 style={{margin:"0 0 6px",fontWeight:400}}>Você segurou firme.</h3>
+<p style={{margin:"0 0 12px",color:C.mute,fontSize:14}}>Quer anotar o que aconteceu? É opcional.</p>
+<textarea value={urgeText} onChange={e=>setUrgeText(e.target.value)} rows={3} placeholder="O que bateu a vontade, onde, que horas..." style={{...S.input,resize:"vertical"}}/>
+<div style={{display:"flex",gap:8}}><button onClick={addUrge} style={S.btn}>Registrar</button><button onClick={()=>setUrgeOpen(false)} style={S.ghost}>Cancelar</button></div></div></div>}
+
+{menu&&<div onClick={()=>setMenu(false)} style={{position:"fixed",inset:0,background:"#000a",zIndex:10}}>
+<aside onClick={e=>e.stopPropagation()} style={{position:"absolute",right:0,top:0,bottom:0,width:"min(400px,100%)",background:C.panel,borderLeft:`1px solid ${C.line}`,overflowY:"auto",padding:20,boxSizing:"border-box"}}>
+<div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{...S.tab,...(tab===k?S.tabOn:{})}}>{l}</button>)}</div>
+<button aria-label="Fechar" onClick={()=>setMenu(false)} style={{...S.ghost,fontSize:20}}>✕</button></div>
+
+{tab==="goals"&&<div>
+<div style={S.card}>
+<input placeholder="Nome (opcional)" value={gf.name} onChange={e=>setGf({...gf,name:e.target.value})} style={S.input}/>
+<input placeholder="Dias (ex: 30, 90, 1000)" inputMode="numeric" value={gf.days} onChange={e=>setGf({...gf,days:e.target.value.replace(/\D/g,"")})} style={S.input}/>
+<div style={{display:"flex",gap:8}}><button onClick={saveGoal} style={S.btn}>{gf.id?"Salvar meta":"Criar meta"}</button>
+{gf.id&&<button onClick={()=>setGf({id:null,name:"",days:""})} style={S.ghost}>Cancelar</button>}</div></div>
+{data.goals.length===0&&<p style={{color:C.mute}}>Nenhuma meta ainda. Crie a primeira acima.</p>}
+{data.goals.map(g=>{const on=goal?.id===g.id;return(<div key={g.id} style={{...S.card,marginTop:10,borderColor:on?C.wine:C.line}}>
+<div style={{display:"flex",justifyContent:"space-between"}}><span>{g.name||`${g.days} dias`}</span><span style={{color:C.mute}}>{g.days} dias</span></div>
+<div style={{display:"flex",gap:14,marginTop:10}}>
+{on?<span style={{color:C.wineSoft,fontSize:14}}>Meta ativa</span>:<button onClick={()=>upd({activeGoalId:g.id})} style={S.link}>Ativar</button>}
+<button onClick={()=>setGf({id:g.id,name:g.name,days:String(g.days)})} style={S.link}>Editar</button>
+<button onClick={()=>delGoal(g.id)} style={S.link}>Excluir</button></div></div>)})}</div>}
+
+{tab==="history"&&<div>
+<div style={{display:"flex",gap:10}}>
+<div style={{...S.card,flex:1,textAlign:"center"}}><div style={{fontSize:34,fontWeight:200}}>{total}</div><div style={{color:C.mute,fontSize:12}}>dias acumulados</div></div>
+<div style={{...S.card,flex:1,textAlign:"center"}}><div style={{fontSize:34,fontWeight:200}}>{best}</div><div style={{color:C.mute,fontSize:12}}>maior sequência</div></div></div>
+
+<h3 style={S.h}>Marcos</h3>
+<div style={{display:"flex",gap:8}}>{[7,30,90,365].map(m=>{const ok=best>=m;return(<div key={m} style={{flex:1,textAlign:"center",padding:"10px 0",border:`1px solid ${ok?C.wine:C.line}`,borderRadius:10,opacity:ok?1:.4,background:ok?C.wineDim:"none"}}>
+<div style={{fontSize:20}}>{m}</div><div style={{fontSize:11,color:C.mute}}>dias</div></div>)})}</div>
+
+<h3 style={S.h}>Momentos críticos</h3>
+<div style={{background:"#2a0f14",border:`1px solid ${C.wine}`,borderRadius:10,padding:14}}>
+<div style={{color:C.wineSoft,fontSize:14,marginBottom:data.urges.length?10:0}}>⚠ {data.urges.length} {data.urges.length===1?"vez":"vezes"} em que quase aconteceu, mas você resistiu</div>
+{data.urges.map(u=><div key={u.id} style={{borderTop:`1px solid ${C.wineDim}`,padding:"8px 0"}}>
+<div style={{fontSize:12,color:C.mute}}>{fmt(u.at)}</div>{u.text&&<div style={{whiteSpace:"pre-wrap",lineHeight:1.5,marginTop:4}}>{u.text}</div>}
+<button onClick={()=>upd({urges:data.urges.filter(x=>x.id!==u.id)})} style={{...S.link,fontSize:12,marginTop:4}}>Excluir</button></div>)}</div>
+
+<h3 style={S.h}>Ciclos</h3>
+{[...data.cycles].reverse().map(c=><div key={c.id} style={{borderLeft:`2px solid ${c.end==null?C.wine:C.line}`,padding:"2px 0 14px 14px",marginLeft:4}}>
+<div>{dbt(c.start,c.end??now)} dias {c.end==null&&<span style={{color:C.wineSoft,fontSize:13}}>(em andamento)</span>}</div>
+<div style={{color:C.mute,fontSize:13}}>Início: {fmt(c.start)}</div><div style={{color:C.mute,fontSize:13}}>{c.end?`Reinício: ${fmt(c.end)}`:"Sem reinício"}</div></div>)}
+<div style={{...S.card,marginTop:6}}>
+<div style={{color:C.mute,fontSize:13,marginBottom:8}}>Ajustar data de início do ciclo atual (opcional)</div>
+<input type="datetime-local" value={sdv} max={dtl(Date.now())} onChange={e=>setSd(e.target.value)} style={S.input}/>
+<button onClick={saveStart} style={S.btn}>Salvar data</button></div>
+
+<h3 style={S.h}>Diário</h3>
+<textarea placeholder="Como foi o seu dia?" value={note} onChange={e=>setNote(e.target.value)} rows={3} style={{...S.input,resize:"vertical"}}/>
+<button onClick={addNote} style={S.btn}>Salvar nota</button>
+{data.notes.map(n=><div key={n.id} style={{...S.card,marginTop:10}}>
+<div style={{color:C.mute,fontSize:12,marginBottom:6}}>{fmt(n.at)}{n.edited?` · editada ${fmt(n.edited)}`:""}</div>
+{en?.id===n.id?<><textarea value={en.text} onChange={e=>setEn({...en,text:e.target.value})} rows={3} style={{...S.input,resize:"vertical"}}/>
+<div style={{display:"flex",gap:12}}><button onClick={saveEdit} style={S.btn}>Salvar</button><button onClick={()=>setEn(null)} style={S.ghost}>Cancelar</button></div></>
+:<><div style={{whiteSpace:"pre-wrap",lineHeight:1.5}}>{n.text}</div>
+<div style={{display:"flex",gap:14,marginTop:8}}><button onClick={()=>setEn({id:n.id,text:n.text})} style={S.link}>Editar</button>
+<button onClick={()=>upd({notes:data.notes.filter(x=>x.id!==n.id)})} style={S.link}>Excluir</button></div></>}</div>)}
+
+<div style={{marginTop:36,borderTop:`1px solid ${C.line}`,paddingTop:16,textAlign:"center",color:C.mute,fontSize:12,lineHeight:1.8}}>
+<div>Made by Emanuel · © {new Date().getFullYear()}</div><div>Criado em {CREATED}</div><div>Versão {VERSION}</div>
+<button onClick={()=>setMore(!more)} style={{...S.link,fontSize:12}}>{more?"Ler menos":"Ler mais"}</button>
+{more&&<div style={{textAlign:"left",marginTop:10}}>{CHANGES.map(([v,d,t])=><div key={v} style={{marginBottom:8}}><div style={{color:C.text}}>v{v} · {d}</div><div>{t}</div></div>)}</div>}</div></div>}
+
+{tab==="msgs"&&<div>
+<p style={{color:C.mute,fontSize:13,lineHeight:1.5,marginTop:0}}>Frases e versículos do card diário, em inglês. Uma mensagem por dia, em rotação.</p>
+<div style={S.card}>
+<textarea placeholder="Frase" rows={2} value={mf.q} onChange={e=>setMf({...mf,q:e.target.value})} style={{...S.input,resize:"vertical"}}/>
+<input placeholder="Autor" value={mf.a} onChange={e=>setMf({...mf,a:e.target.value})} style={S.input}/>
+<textarea placeholder="Versículo" rows={2} value={mf.v} onChange={e=>setMf({...mf,v:e.target.value})} style={{...S.input,resize:"vertical"}}/>
+<input placeholder="Referência (ex: Psalm 23:1)" value={mf.r} onChange={e=>setMf({...mf,r:e.target.value})} style={S.input}/>
+<div style={{display:"flex",gap:8}}><button onClick={saveMsg} style={S.btn}>{mf.id?"Salvar mensagem":"Adicionar"}</button>
+{mf.id&&<button onClick={()=>setMf({id:null,q:"",a:"",v:"",r:""})} style={S.ghost}>Cancelar</button>}</div></div>
+{data.msgs.map(m=><div key={m.id} style={{...S.card,marginTop:10,fontSize:14,lineHeight:1.5}}>
+<div style={{fontStyle:"italic"}}>{m.q}</div><div style={{color:C.mute,fontSize:12}}>{m.a}</div>
+<div style={{marginTop:6}}>{m.v} <span style={{color:C.wineSoft}}>{m.r}</span></div>
+<div style={{display:"flex",gap:14,marginTop:8}}><button onClick={()=>setMf(m)} style={S.link}>Editar</button>
+<button onClick={()=>upd({msgs:data.msgs.filter(x=>x.id!==m.id)})} style={S.link}>Excluir</button></div></div>)}
+<button onClick={()=>{if(confirm("Restaurar a lista padrão? Suas mensagens serão substituídas."))upd({msgs:mkMsgs()})}} style={{...S.link,color:C.mute,marginTop:16,fontSize:13}}>Restaurar lista padrão</button></div>}
+
+{tab==="backup"&&<div>
+<p style={{color:C.mute,lineHeight:1.5,marginTop:0}}>Os dados ficam salvos apenas neste navegador. Limpar os dados do navegador apaga tudo, então exporte um backup de vez em quando.</p>
+<div style={{display:"flex",gap:8}}><button onClick={exportData} style={S.btn}>Exportar (.json)</button><button onClick={()=>fileRef.current?.click()} style={S.btn}>Importar (.json)</button>
+<input ref={fileRef} type="file" accept="application/json,.json" onChange={importData} style={{display:"none"}}/></div>
+<div style={{marginTop:60,borderTop:`1px solid ${C.line}`,paddingTop:16}}><button onClick={restart} style={{...S.link,color:C.mute,fontSize:13}}>Reiniciar ciclo</button></div></div>}
+</aside></div>}
+</div>)}
+
+const S={font:"Georgia,'Times New Roman',serif",
+full:{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"},
+card:{background:C.bg,border:`1px solid ${C.line}`,borderRadius:10,padding:16},
+input:{width:"100%",boxSizing:"border-box",background:C.panel,border:`1px solid ${C.line}`,borderRadius:8,color:C.text,padding:"10px 12px",marginBottom:10,fontSize:15,fontFamily:"inherit"},
+btn:{background:C.wineDim,border:`1px solid ${C.wine}`,color:C.text,borderRadius:8,padding:"10px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:14},
+ghost:{background:"none",border:"none",color:C.mute,cursor:"pointer",fontFamily:"inherit"},
+link:{background:"none",border:"none",color:C.wineSoft,cursor:"pointer",padding:0,fontFamily:"inherit",fontSize:14},
+tab:{background:"none",border:`1px solid ${C.line}`,color:C.mute,borderRadius:20,padding:"6px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:13},
+tabOn:{borderColor:C.wine,color:C.text,background:C.wineDim},
+h:{fontWeight:400,color:C.mute,fontSize:14,margin:"22px 0 10px"}};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
