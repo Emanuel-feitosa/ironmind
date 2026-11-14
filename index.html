@@ -27,9 +27,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script type="text/babel">
 const {useState,useEffect,useMemo,useRef}=React;
-const KEY="ironmind_v1",DAY=864e5,VERSION="0.1.0",CREATED="12/11/2026";
+const KEY="ironmind_v1",DAY=864e5,VERSION="0.1.1",CREATED="12/11/2026";
 const C={bg:"#0a0a0a",panel:"#141012",line:"#2a1a1e",wine:"#8a2f3d",wineDim:"#4a1a22",wineSoft:"#b4596a",text:"#e8e2e3",mute:"#8d8183",emerald:"#2fae82"};
-const CHANGES=[["0.1.0","12/11/2026","Primeira versão: anel de progresso, Modo Superação, metas, histórico, recorde, marcos, momentos críticos, diário editável, mensagens editáveis e backup."]];
+const CHANGES=[["0.1.1","14/11/2026","Correção: o contador e as metas não começam mais sozinhos. Tela de início com data opcional; nenhuma meta vem ativa até você ativar."],["0.1.0","12/11/2026","Primeira versão: anel de progresso, Modo Superação, metas, histórico, recorde, marcos, momentos críticos, diário editável, mensagens editáveis e backup."]];
 const DEF=[
 ["You have power over your mind, not outside events. Realize this, and you will find strength.","Marcus Aurelius","Be strong and of a good courage; be not afraid.","Joshua 1:9"],
 ["No man is free who is not master of himself.","Epictetus","He that ruleth his spirit is better than he that taketh a city.","Proverbs 16:32"],
@@ -56,8 +56,8 @@ const mkMsgs=()=>DEF.map(([q,a,v,r],i)=>({id:"d"+i,q,a,v,r}));
 const fmt=t=>new Date(t).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"});
 const dbt=(a,b)=>Math.max(0,Math.floor((b-a)/DAY));
 const dtl=t=>new Date(t-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16);
-const initial=()=>({goals:[{id:"g7",name:"Primeira semana",days:7},{id:"g30",name:"",days:30},{id:"g90",name:"Reset completo",days:90}],activeGoalId:"g30",cycles:[{id:uid(),start:Date.now(),end:null}],notes:[],urges:[],msgs:mkMsgs()});
-const load=()=>{try{const r=localStorage.getItem(KEY);if(r){const d=JSON.parse(r);if(Array.isArray(d.goals)&&Array.isArray(d.cycles)&&d.cycles.length)return{notes:[],urges:[],msgs:mkMsgs(),...d}}}catch(e){}return initial()};
+const initial=()=>({goals:[{id:"g7",name:"Primeira semana",days:7},{id:"g30",name:"",days:30},{id:"g90",name:"Reset completo",days:90}],activeGoalId:null,cycles:[],notes:[],urges:[],msgs:mkMsgs()});
+const load=()=>{try{const r=localStorage.getItem(KEY);if(r){const d=JSON.parse(r);if(Array.isArray(d.goals)&&Array.isArray(d.cycles))return{notes:[],urges:[],msgs:mkMsgs(),...d}}}catch(e){}return initial()};
 
 function Helmet({size=120,draw=false,color=C.wine,width=2.5}){
 const p={fill:"none",stroke:color,strokeWidth:width,strokeLinecap:"round",strokeLinejoin:"round",pathLength:1,className:draw?"im-draw":undefined};
@@ -83,23 +83,23 @@ return(<div style={{textAlign:"center"}}><div style={{position:"relative",width:
 <div style={{fontSize:76,fontWeight:200,lineHeight:1,color:C.text}}>{days}</div>
 <div style={{color:C.mute,fontSize:14,marginTop:6}}>{days===1?"dia limpo":"dias limpos"}</div></div></div>
 <div style={{marginTop:14,fontSize:22,color}}>{Math.floor(pct*100)}%</div>
-<div style={{color:C.mute,fontSize:14,marginTop:4}}>{goal?(goal.name?`${goal.name} · ${goal.days} dias`:`Meta de ${goal.days} dias`):"Crie uma meta no menu"}</div>
+<div style={{color:C.mute,fontSize:14,marginTop:4}}>{goal?(goal.name?`${goal.name} · ${goal.days} dias`:`Meta de ${goal.days} dias`):"Ative uma meta no menu"}</div>
 {over&&<div style={{marginTop:10,color:C.emerald,fontSize:18}}>+{days-goal.days} dias além da meta</div>}</div>)}
 
 function App(){
 const [splash,setSplash]=useState(true),[data,setData]=useState(load),[now,setNow]=useState(Date.now());
 const [menu,setMenu]=useState(false),[tab,setTab]=useState("goals"),[gf,setGf]=useState({id:null,name:"",days:""});
 const [note,setNote]=useState(""),[en,setEn]=useState(null),[urgeOpen,setUrgeOpen]=useState(false),[urgeText,setUrgeText]=useState("");
-const [toast,setToast]=useState(""),[sd,setSd]=useState(null),[mf,setMf]=useState({id:null,q:"",a:"",v:"",r:""}),[more,setMore]=useState(false);
+const [toast,setToast]=useState(""),[wd,setWd]=useState(""),[sd,setSd]=useState(null),[mf,setMf]=useState({id:null,q:"",a:"",v:"",r:""}),[more,setMore]=useState(false);
 const fileRef=useRef(null);
 useEffect(()=>{const t=setTimeout(()=>setSplash(false),3500);return()=>clearTimeout(t)},[]);
 useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(t)},[]);
 useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){}},[data]);
 useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(""),2500);return()=>clearTimeout(t)},[toast]);
 
-const cur=data.cycles.find(c=>c.end==null)||data.cycles[data.cycles.length-1];
-const days=dbt(cur.start,cur.end??now);
-const goal=data.goals.find(g=>g.id===data.activeGoalId)||data.goals[0]||null;
+const cur=data.cycles.find(c=>c.end==null)||null;
+const days=cur?dbt(cur.start,now):0;
+const goal=data.goals.find(g=>g.id===data.activeGoalId)||null;
 const total=useMemo(()=>data.cycles.reduce((s,c)=>s+dbt(c.start,c.end??now),0),[data.cycles,now]);
 const best=useMemo(()=>Math.max(0,...data.cycles.map(c=>dbt(c.start,c.end??now))),[data.cycles,now]);
 const list=data.msgs.length?data.msgs:mkMsgs();
@@ -107,10 +107,12 @@ const msg=list[Math.floor(now/DAY)%list.length];
 const upd=p=>setData(d=>({...d,...p}));
 
 const saveGoal=()=>{const n=parseInt(gf.days,10);if(!n||n<1)return;const g={id:gf.id||uid(),name:gf.name.trim(),days:n};
-upd({goals:gf.id?data.goals.map(x=>x.id===gf.id?g:x):[...data.goals,g],activeGoalId:data.activeGoalId||g.id});setGf({id:null,name:"",days:""})};
-const delGoal=id=>{if(!confirm("Excluir esta meta?"))return;const goals=data.goals.filter(g=>g.id!==id);upd({goals,activeGoalId:data.activeGoalId===id?goals[0]?.id||null:data.activeGoalId})};
+upd({goals:gf.id?data.goals.map(x=>x.id===gf.id?g:x):[...data.goals,g]});setGf({id:null,name:"",days:""})};
+const delGoal=id=>{if(!confirm("Excluir esta meta?"))return;const goals=data.goals.filter(g=>g.id!==id);upd({goals,activeGoalId:data.activeGoalId===id?null:data.activeGoalId})};
 const restart=()=>{if(!confirm("Reiniciar o ciclo atual? O histórico será mantido."))return;const t=Date.now();
 upd({cycles:[...data.cycles.map(c=>c.end==null?{...c,end:t}:c),{id:uid(),start:t,end:null}]});setMenu(false)};
+const begin=()=>{const ts=wd?new Date(wd).getTime():Date.now();if(!ts||ts>Date.now())return alert("Escolha uma data que não seja no futuro.");upd({cycles:[{id:uid(),start:ts,end:null}]});setWd("")};
+const zero=()=>{if(!confirm("Apagar TODOS os dados e voltar ao início? Isso não pode ser desfeito."))return;setData(initial());setMenu(false)};
 const addNote=()=>{if(!note.trim())return;upd({notes:[{id:uid(),at:Date.now(),text:note.trim()},...data.notes]});setNote("")};
 const saveEdit=()=>{if(!en.text.trim())return;upd({notes:data.notes.map(n=>n.id===en.id?{...n,text:en.text.trim(),edited:Date.now()}:n)});setEn(null)};
 const addUrge=()=>{upd({urges:[{id:uid(),at:Date.now(),text:urgeText.trim()},...data.urges]});setUrgeText("");setUrgeOpen(false);setToast("Você resistiu. Isso é força.")};
@@ -122,12 +124,12 @@ upd({msgs:mf.id?data.msgs.map(x=>x.id===mf.id?m:x):[...data.msgs,m]});setMf({id:
 const exportData=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));const a=document.createElement("a");
 a.href=url;a.download=`ironmind-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url)};
 const importData=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);
-if(!Array.isArray(d.goals)||!Array.isArray(d.cycles)||!d.cycles.length)throw 0;setData({notes:[],urges:[],msgs:mkMsgs(),activeGoalId:d.goals[0]?.id||null,...d});alert("Dados importados com sucesso.")}
+if(!Array.isArray(d.goals)||!Array.isArray(d.cycles))throw 0;setData({notes:[],urges:[],msgs:mkMsgs(),activeGoalId:d.goals[0]?.id||null,...d});alert("Dados importados com sucesso.")}
 catch(err){alert("Arquivo inválido. Use um backup .json do IronMind.")}};r.readAsText(f);e.target.value=""};
 
 if(splash)return <Splash/>;
 const tabs=[["goals","Metas"],["history","Histórico"],["msgs","Mensagens"],["backup","Backup"]];
-const sdv=sd??dtl(cur.start);
+const sdv=sd??(cur?dtl(cur.start):"");
 
 return(<div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:S.font}}>
 <header style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px"}}>
@@ -135,11 +137,11 @@ return(<div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:S.
 <button aria-label="Abrir menu" onClick={()=>setMenu(true)} style={{...S.ghost,fontSize:26,padding:"0 10px"}}>⋮</button></header>
 
 <main style={{maxWidth:460,margin:"0 auto",padding:"10px 20px 50px"}}>
-<Ring days={days} goal={goal}/>
+{cur?<Ring days={days} goal={goal}/>:<div style={{...S.card,textAlign:"center",padding:24}}><Helmet size={70} width={3}/><h2 style={{fontWeight:300,margin:"10px 0 6px"}}>Pronto para começar?</h2><p style={{color:C.mute,fontSize:14,lineHeight:1.5,margin:"0 0 16px"}}>O contador só começa quando você tocar no botão abaixo. Se já está limpo há alguns dias, ajuste a data de início (opcional).</p><input type="datetime-local" value={wd} max={dtl(Date.now())} onChange={e=>setWd(e.target.value)} style={S.input}/><button onClick={begin} style={S.btn}>Começar minha jornada</button></div>}
 <section style={{...S.card,marginTop:36}}>
 {msg.q&&<><p style={{margin:0,fontSize:18,lineHeight:1.55,fontStyle:"italic"}}>“{msg.q}”</p><p style={{margin:"6px 0 18px",color:C.mute,fontSize:14}}>{msg.a}</p></>}
 {msg.v&&<div style={{borderTop:msg.q?`1px solid ${C.line}`:"none",paddingTop:msg.q?16:0}}><p style={{margin:0,lineHeight:1.55}}>{msg.v}</p><p style={{margin:"6px 0 0",color:C.wineSoft,fontSize:14}}>{msg.r}</p></div>}</section>
-<div style={{textAlign:"center",marginTop:26}}><button onClick={()=>setUrgeOpen(true)} style={{...S.btn,borderRadius:22,padding:"9px 22px",color:C.wineSoft}}>Resisti</button></div>
+{cur&&<div style={{textAlign:"center",marginTop:26}}><button onClick={()=>setUrgeOpen(true)} style={{...S.btn,borderRadius:22,padding:"9px 22px",color:C.wineSoft}}>Resisti</button></div>}
 </main>
 
 {toast&&<div style={{position:"fixed",bottom:26,left:"50%",transform:"translateX(-50%)",background:C.wineDim,border:`1px solid ${C.wine}`,borderRadius:20,padding:"10px 18px",zIndex:30,fontSize:14}}>{toast}</div>}
@@ -191,10 +193,10 @@ return(<div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:S.
 {[...data.cycles].reverse().map(c=><div key={c.id} style={{borderLeft:`2px solid ${c.end==null?C.wine:C.line}`,padding:"2px 0 14px 14px",marginLeft:4}}>
 <div>{dbt(c.start,c.end??now)} dias {c.end==null&&<span style={{color:C.wineSoft,fontSize:13}}>(em andamento)</span>}</div>
 <div style={{color:C.mute,fontSize:13}}>Início: {fmt(c.start)}</div><div style={{color:C.mute,fontSize:13}}>{c.end?`Reinício: ${fmt(c.end)}`:"Sem reinício"}</div></div>)}
-<div style={{...S.card,marginTop:6}}>
+{cur&&<div style={{...S.card,marginTop:6}}>
 <div style={{color:C.mute,fontSize:13,marginBottom:8}}>Ajustar data de início do ciclo atual (opcional)</div>
 <input type="datetime-local" value={sdv} max={dtl(Date.now())} onChange={e=>setSd(e.target.value)} style={S.input}/>
-<button onClick={saveStart} style={S.btn}>Salvar data</button></div>
+<button onClick={saveStart} style={S.btn}>Salvar data</button></div>}
 
 <h3 style={S.h}>Diário</h3>
 <textarea placeholder="Como foi o seu dia?" value={note} onChange={e=>setNote(e.target.value)} rows={3} style={{...S.input,resize:"vertical"}}/>
@@ -232,7 +234,7 @@ return(<div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:S.
 <p style={{color:C.mute,lineHeight:1.5,marginTop:0}}>Os dados ficam salvos apenas neste navegador. Limpar os dados do navegador apaga tudo, então exporte um backup de vez em quando.</p>
 <div style={{display:"flex",gap:8}}><button onClick={exportData} style={S.btn}>Exportar (.json)</button><button onClick={()=>fileRef.current?.click()} style={S.btn}>Importar (.json)</button>
 <input ref={fileRef} type="file" accept="application/json,.json" onChange={importData} style={{display:"none"}}/></div>
-<div style={{marginTop:60,borderTop:`1px solid ${C.line}`,paddingTop:16}}><button onClick={restart} style={{...S.link,color:C.mute,fontSize:13}}>Reiniciar ciclo</button></div></div>}
+<div style={{marginTop:60,borderTop:`1px solid ${C.line}`,paddingTop:16,display:"flex",flexDirection:"column",gap:14,alignItems:"flex-start"}}>{cur&&<button onClick={restart} style={{...S.link,color:C.mute,fontSize:13}}>Reiniciar ciclo</button>}<button onClick={zero} style={{...S.link,color:C.mute,fontSize:13}}>Apagar todos os dados</button></div></div>}
 </aside></div>}
 </div>)}
 
