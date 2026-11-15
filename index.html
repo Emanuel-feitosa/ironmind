@@ -27,9 +27,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script type="text/babel">
 const {useState,useEffect,useMemo,useRef}=React;
-const KEY="ironmind_v1",DAY=864e5,VERSION="0.1.1",CREATED="12/11/2026";
+const KEY="ironmind_v1",DAY=864e5,VERSION="0.1.2",CREATED="12/11/2026";
 const C={bg:"#0a0a0a",panel:"#141012",line:"#2a1a1e",wine:"#8a2f3d",wineDim:"#4a1a22",wineSoft:"#b4596a",text:"#e8e2e3",mute:"#8d8183",emerald:"#2fae82"};
-const CHANGES=[["0.1.1","14/11/2026","Correção: o contador e as metas não começam mais sozinhos. Tela de início com data opcional; nenhuma meta vem ativa até você ativar."],["0.1.0","12/11/2026","Primeira versão: anel de progresso, Modo Superação, metas, histórico, recorde, marcos, momentos críticos, diário editável, mensagens editáveis e backup."]];
+const CHANGES=[["0.1.2","15/11/2026","Reinício com 3 momentos (registro automático, início real e fim da recaída opcional), edição das datas de cada ciclo, rótulos midnight e early morning, e retorno à tela inicial depois de 1 minuto fora do app."],["0.1.1","14/11/2026","Correção: o contador e as metas não começam mais sozinhos. Tela de início com data opcional; nenhuma meta vem ativa até você ativar."],["0.1.0","12/11/2026","Primeira versão: anel de progresso, Modo Superação, metas, histórico, recorde, marcos, momentos críticos, diário editável, mensagens editáveis e backup."]];
 const DEF=[
 ["You have power over your mind, not outside events. Realize this, and you will find strength.","Marcus Aurelius","Be strong and of a good courage; be not afraid.","Joshua 1:9"],
 ["No man is free who is not master of himself.","Epictetus","He that ruleth his spirit is better than he that taketh a city.","Proverbs 16:32"],
@@ -53,7 +53,8 @@ const DEF=[
 ["Very little is needed to make a happy life; it is all within yourself, in your way of thinking.","Marcus Aurelius","As he thinketh in his heart, so is he.","Proverbs 23:7"]];
 const uid=()=>Math.random().toString(36).slice(2,10);
 const mkMsgs=()=>DEF.map(([q,a,v,r],i)=>({id:"d"+i,q,a,v,r}));
-const fmt=t=>new Date(t).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"});
+const tg=d=>d.getHours()===0&&d.getMinutes()===0?"midnight":d.getHours()<6?"early morning":"";
+const fmt=t=>{const x=tg(new Date(t));return new Date(t).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"})+(x?" · "+x:"")};
 const dbt=(a,b)=>Math.max(0,Math.floor((b-a)/DAY));
 const dtl=t=>new Date(t-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16);
 const initial=()=>({goals:[{id:"g7",name:"Primeira semana",days:7},{id:"g30",name:"",days:30},{id:"g90",name:"Reset completo",days:90}],activeGoalId:null,cycles:[],notes:[],urges:[],msgs:mkMsgs()});
@@ -72,6 +73,7 @@ function Splash(){return(<div style={{...S.full,flexDirection:"column",gap:22}}>
 
 function Sparks(){return(<div className="sp">{Array.from({length:14},(_,i)=><i key={i} style={{left:(8+(i*37)%84)+"%",animationDelay:((i*.45)%5)+"s",animationDuration:(4+i%4)+"s",width:3+(i%3)*2,height:3+(i%3)*2}}/>)}</div>)}
 
+function Tg({v}){const t=tg(new Date(v));return t?<div style={{color:C.wineSoft,fontSize:12,margin:"-6px 0 8px"}}>{t}</div>:null}
 function Ring({days,goal}){
 const R=118,circ=2*Math.PI*R,pct=goal?Math.min(days/goal.days,1):0,over=goal&&days>=goal.days,color=over?C.emerald:C.wine;
 return(<div style={{textAlign:"center"}}><div style={{position:"relative",width:280,height:280,margin:"0 auto"}}>
@@ -90,11 +92,12 @@ function App(){
 const [splash,setSplash]=useState(true),[data,setData]=useState(load),[now,setNow]=useState(Date.now());
 const [menu,setMenu]=useState(false),[tab,setTab]=useState("goals"),[gf,setGf]=useState({id:null,name:"",days:""});
 const [note,setNote]=useState(""),[en,setEn]=useState(null),[urgeOpen,setUrgeOpen]=useState(false),[urgeText,setUrgeText]=useState("");
-const [toast,setToast]=useState(""),[wd,setWd]=useState(""),[sd,setSd]=useState(null),[mf,setMf]=useState({id:null,q:"",a:"",v:"",r:""}),[more,setMore]=useState(false);
+const [toast,setToast]=useState(""),[wd,setWd]=useState(""),[ce,setCe]=useState(null),[rs,setRs]=useState(null),[sd,setSd]=useState(null),[mf,setMf]=useState({id:null,q:"",a:"",v:"",r:""}),[more,setMore]=useState(false);
 const fileRef=useRef(null);
 useEffect(()=>{const t=setTimeout(()=>setSplash(false),3500);return()=>clearTimeout(t)},[]);
 useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(t)},[]);
 useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){}},[data]);
+useEffect(()=>{let h=0;const f=()=>{if(document.hidden){h=Date.now();return}setNow(Date.now());if(h&&Date.now()-h>60000){setMenu(false);setUrgeOpen(false);setRs(null);setCe(null);setEn(null);setTab("goals")}h=0};document.addEventListener("visibilitychange",f);return()=>document.removeEventListener("visibilitychange",f)},[]);
 useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(""),2500);return()=>clearTimeout(t)},[toast]);
 
 const cur=data.cycles.find(c=>c.end==null)||null;
@@ -109,9 +112,19 @@ const upd=p=>setData(d=>({...d,...p}));
 const saveGoal=()=>{const n=parseInt(gf.days,10);if(!n||n<1)return;const g={id:gf.id||uid(),name:gf.name.trim(),days:n};
 upd({goals:gf.id?data.goals.map(x=>x.id===gf.id?g:x):[...data.goals,g]});setGf({id:null,name:"",days:""})};
 const delGoal=id=>{if(!confirm("Excluir esta meta?"))return;const goals=data.goals.filter(g=>g.id!==id);upd({goals,activeGoalId:data.activeGoalId===id?null:data.activeGoalId})};
-const restart=()=>{if(!confirm("Reiniciar o ciclo atual? O histórico será mantido."))return;const t=Date.now();
-upd({cycles:[...data.cycles.map(c=>c.end==null?{...c,end:t}:c),{id:uid(),start:t,end:null}]});setMenu(false)};
-const begin=()=>{const ts=wd?new Date(wd).getTime():Date.now();if(!ts||ts>Date.now())return alert("Escolha uma data que não seja no futuro.");upd({cycles:[{id:uid(),start:ts,end:null}]});setWd("")};
+const restart=()=>{setRs({start:dtl(Date.now()),end:""});setMenu(false)};
+const confirmRestart=()=>{const t=Date.now(),st=new Date(rs.start).getTime(),en=rs.end?new Date(rs.end).getTime():st,open=data.cycles.find(c=>c.end==null);
+if(!st||!en||st>t)return alert("Escolha datas válidas, que não sejam no futuro.");
+if(en>st)return alert("O fim do ciclo anterior não pode ser depois do início do novo ciclo.");
+if(open&&en<open.start)return alert("O fim não pode ser antes do início do ciclo anterior.");
+upd({cycles:[...data.cycles.map(c=>c.end==null?{...c,end:en}:c),{id:uid(),start:st,end:null,loggedAt:t}]});setRs(null);setToast("Ciclo reiniciado.")};
+const saveCe=()=>{const i=data.cycles.findIndex(c=>c.id===ce.id),c=data.cycles[i],st=new Date(ce.start).getTime(),en=c.end==null?null:new Date(ce.end).getTime(),t=Date.now(),pv=data.cycles[i-1],nx=data.cycles[i+1];
+if(!st||(c.end!=null&&!en)||st>t||(en&&en>t))return alert("Datas inválidas ou no futuro.");
+if(en&&en<st)return alert("O fim não pode ser antes do início.");
+if(pv&&st<pv.end)return alert("O início não pode ser antes do fim do ciclo anterior.");
+if(nx&&en>nx.start)return alert("O fim não pode ser depois do início do ciclo seguinte.");
+upd({cycles:data.cycles.map(x=>x.id===ce.id?{...x,start:st,end:en}:x)});setCe(null)};
+const begin=()=>{const ts=wd?new Date(wd).getTime():Date.now();if(!ts||ts>Date.now())return alert("Escolha uma data que não seja no futuro.");upd({cycles:[{id:uid(),start:ts,end:null,loggedAt:Date.now()}]});setWd("")};
 const zero=()=>{if(!confirm("Apagar TODOS os dados e voltar ao início? Isso não pode ser desfeito."))return;setData(initial());setMenu(false)};
 const addNote=()=>{if(!note.trim())return;upd({notes:[{id:uid(),at:Date.now(),text:note.trim()},...data.notes]});setNote("")};
 const saveEdit=()=>{if(!en.text.trim())return;upd({notes:data.notes.map(n=>n.id===en.id?{...n,text:en.text.trim(),edited:Date.now()}:n)});setEn(null)};
@@ -146,6 +159,15 @@ return(<div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:S.
 
 {toast&&<div style={{position:"fixed",bottom:26,left:"50%",transform:"translateX(-50%)",background:C.wineDim,border:`1px solid ${C.wine}`,borderRadius:20,padding:"10px 18px",zIndex:30,fontSize:14}}>{toast}</div>}
 
+{rs&&<div onClick={()=>setRs(null)} style={{position:"fixed",inset:0,background:"#000c",zIndex:20,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+<div onClick={e=>e.stopPropagation()} style={{...S.card,background:C.panel,width:"min(400px,100%)"}}>
+<h3 style={{margin:"0 0 12px",fontWeight:400}}>Reiniciar ciclo</h3>
+<div style={{color:C.mute,fontSize:13,marginBottom:6}}>Início do novo ciclo</div>
+<input type="datetime-local" value={rs.start} max={dtl(Date.now())} onChange={e=>setRs({...rs,start:e.target.value})} style={S.input}/><Tg v={rs.start}/>
+<div style={{color:C.mute,fontSize:13,marginBottom:6}}>Fim do ciclo anterior, a recaída (opcional)</div>
+<input type="datetime-local" value={rs.end} max={rs.start} onChange={e=>setRs({...rs,end:e.target.value})} style={S.input}/><Tg v={rs.end}/>
+<p style={{color:C.mute,fontSize:12,lineHeight:1.5,margin:"0 0 12px"}}>Se o fim ficar vazio, o ciclo anterior termina junto com o início do novo. O momento em que você tocou em Reiniciar é registrado sozinho.</p>
+<div style={{display:"flex",gap:8}}><button onClick={confirmRestart} style={S.btn}>Reiniciar</button><button onClick={()=>setRs(null)} style={S.ghost}>Cancelar</button></div></div></div>}
 {urgeOpen&&<div onClick={()=>setUrgeOpen(false)} style={{position:"fixed",inset:0,background:"#000c",zIndex:20,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
 <div onClick={e=>e.stopPropagation()} style={{...S.card,background:C.panel,width:"min(400px,100%)"}}>
 <h3 style={{margin:"0 0 6px",fontWeight:400}}>Você segurou firme.</h3>
@@ -192,11 +214,14 @@ return(<div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:S.
 <h3 style={S.h}>Ciclos</h3>
 {[...data.cycles].reverse().map(c=><div key={c.id} style={{borderLeft:`2px solid ${c.end==null?C.wine:C.line}`,padding:"2px 0 14px 14px",marginLeft:4}}>
 <div>{dbt(c.start,c.end??now)} dias {c.end==null&&<span style={{color:C.wineSoft,fontSize:13}}>(em andamento)</span>}</div>
-<div style={{color:C.mute,fontSize:13}}>Início: {fmt(c.start)}</div><div style={{color:C.mute,fontSize:13}}>{c.end?`Reinício: ${fmt(c.end)}`:"Sem reinício"}</div></div>)}
-{cur&&<div style={{...S.card,marginTop:6}}>
-<div style={{color:C.mute,fontSize:13,marginBottom:8}}>Ajustar data de início do ciclo atual (opcional)</div>
-<input type="datetime-local" value={sdv} max={dtl(Date.now())} onChange={e=>setSd(e.target.value)} style={S.input}/>
-<button onClick={saveStart} style={S.btn}>Salvar data</button></div>}
+<div style={{color:C.mute,fontSize:13}}>Início: {fmt(c.start)}</div><div style={{color:C.mute,fontSize:13}}>{c.end?`Fim (recaída): ${fmt(c.end)}`:"Sem fim"}</div>
+{c.loggedAt&&<div style={{color:C.mute,fontSize:13}}>Registrado em: {fmt(c.loggedAt)}</div>}
+{ce?.id===c.id?<div style={{marginTop:8}}>
+<div style={{color:C.mute,fontSize:12,marginBottom:4}}>Início</div><input type="datetime-local" value={ce.start} max={dtl(Date.now())} onChange={e=>setCe({...ce,start:e.target.value})} style={S.input}/><Tg v={ce.start}/>
+{c.end!=null&&<><div style={{color:C.mute,fontSize:12,marginBottom:4}}>Fim (recaída)</div><input type="datetime-local" value={ce.end} max={dtl(Date.now())} onChange={e=>setCe({...ce,end:e.target.value})} style={S.input}/><Tg v={ce.end}/></>}
+<div style={{display:"flex",gap:12}}><button onClick={saveCe} style={S.btn}>Salvar</button><button onClick={()=>setCe(null)} style={S.ghost}>Cancelar</button></div></div>
+:<button onClick={()=>setCe({id:c.id,start:dtl(c.start),end:c.end?dtl(c.end):""})} style={{...S.link,fontSize:12,marginTop:4}}>Editar datas</button>}</div>)}
+
 
 <h3 style={S.h}>Diário</h3>
 <textarea placeholder="Como foi o seu dia?" value={note} onChange={e=>setNote(e.target.value)} rows={3} style={{...S.input,resize:"vertical"}}/>
